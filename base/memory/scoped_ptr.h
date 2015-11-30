@@ -295,8 +295,6 @@ class scoped_ptr_impl {
 // types.
 template <class T, class D = base::DefaultDeleter<T> >
 class scoped_ptr {
-  MOVE_ONLY_TYPE_FOR_CPP_03(scoped_ptr, RValue)
-
  public:
   // The element and deleter types.
   typedef T element_type;
@@ -311,23 +309,15 @@ class scoped_ptr {
   // Constructor.  Allows initialization of a stateful deleter.
   scoped_ptr(element_type* p, const D& d) : impl_(p, d) { }
 
-  // Constructor.  Allows construction from a scoped_ptr rvalue for a
-  // convertible type and deleter.
-  //
-  // IMPLEMENTATION NOTE: C++11 unique_ptr<> keeps this constructor distinct
-  // from the normal move constructor. By C++11 20.7.1.2.1.21, this constructor
-  // has different post-conditions if D is a reference type. Since this
-  // implementation does not support deleters with reference type,
-  // we do not need a separate move constructor allowing us to avoid one
-  // use of SFINAE. You only need to care about this if you modify the
-  // implementation of scoped_ptr.
-  template <typename U, typename V>
-  scoped_ptr(scoped_ptr<U, V> other) : impl_(&other.impl_) {
+  // Move constructor.
+  scoped_ptr(scoped_ptr&& rvalue) : impl_(&rvalue.impl_) { }
+
+  // Move conversion constructor.  Allows construction from a scoped_ptr rvalue
+  // for a convertible type and deleter.
+  template <typename U, typename E>
+  scoped_ptr(scoped_ptr<U, E>&& other) : impl_(&other.impl_) {
     COMPILE_ASSERT(!base::is_array<U>::value, U_cannot_be_an_array);
   }
-
-  // Constructor.  Move constructor for C++03 move emulation of this type.
-  scoped_ptr(RValue rvalue) : impl_(&rvalue.object->impl_) { }
 
   // operator=.  Allows assignment from a scoped_ptr rvalue for a convertible
   // type and deleter.
@@ -411,6 +401,11 @@ class scoped_ptr {
     return scoped_ptr<PassAsType>(Pass());
   }
 
+  // TODO(danakj): Remove this.
+  scoped_ptr&& Pass() WARN_UNUSED_RESULT {
+    return static_cast<scoped_ptr&&>(*this);
+  }
+
  private:
   // Needed to reach into |impl_| in the constructor.
   template <typename U, typename V> friend class scoped_ptr;
@@ -425,12 +420,12 @@ class scoped_ptr {
   // scoped_ptrs.
   template <class U> bool operator==(scoped_ptr<U> const& p2) const;
   template <class U> bool operator!=(scoped_ptr<U> const& p2) const;
+
+  DISALLOW_COPY_AND_ASSIGN(scoped_ptr);
 };
 
 template <class T, class D>
 class scoped_ptr<T[], D> {
-  MOVE_ONLY_TYPE_FOR_CPP_03(scoped_ptr, RValue)
-
  public:
   // The element and deleter types.
   typedef T element_type;
@@ -457,12 +452,12 @@ class scoped_ptr<T[], D> {
   //   NOT use implicit_cast<Base*>() to upcast the static type of the array.
   explicit scoped_ptr(element_type* array) : impl_(array) { }
 
-  // Constructor.  Move constructor for C++03 move emulation of this type.
-  scoped_ptr(RValue rvalue) : impl_(&rvalue.object->impl_) { }
+  // Move constructor.
+  scoped_ptr(scoped_ptr&& rvalue) : impl_(&rvalue.impl_) { }
 
-  // operator=.  Move operator= for C++03 move emulation of this type.
-  scoped_ptr& operator=(RValue rhs) {
-    impl_.TakeState(&rhs.object->impl_);
+  // Move operator=.
+  scoped_ptr& operator=(scoped_ptr&& rhs) {
+    impl_.TakeState(&rhs.impl_);
     return *this;
   }
 
@@ -510,6 +505,11 @@ class scoped_ptr<T[], D> {
     return impl_.release();
   }
 
+  // TODO(danakj): Remove this.
+  scoped_ptr&& Pass() WARN_UNUSED_RESULT {
+    return static_cast<scoped_ptr&&>(*this);
+  }
+
  private:
   // Force element_type to be a complete type.
   enum { type_must_be_complete = sizeof(element_type) };
@@ -536,6 +536,8 @@ class scoped_ptr<T[], D> {
   // scoped_ptrs.
   template <class U> bool operator==(scoped_ptr<U> const& p2) const;
   template <class U> bool operator!=(scoped_ptr<U> const& p2) const;
+
+  DISALLOW_COPY_AND_ASSIGN(scoped_ptr);
 };
 
 // Free functions
